@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-m*+qn!u+i7&ttooam5kinz(jjlbazmd+5%13-3x(-_ddd@d=%5
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['192.168.178.22', 'localhost', '127.0.0.1']
 
 
 # Application definition
@@ -123,6 +123,9 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
+
 from datetime import timedelta
 
 REST_FRAMEWORK = {
@@ -135,7 +138,7 @@ REST_FRAMEWORK = {
 }
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:8081",
+    "http://localhost:5173",
     "http://localhost:3000",
 ]
 
@@ -146,3 +149,5 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': False,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+GOOGLE_CLIENT_ID = 'YOUR_GOOGLE_CLIENT_ID_HERE'

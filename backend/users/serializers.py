@@ -6,7 +6,8 @@ from .models import UserProfile
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
-        fields = ['instruments', 'genres', 'skill_level', 'bio', 'location']
+        fields = ['instruments', 'genres', 'skill_level', 'bio', 'location', 'avatar_url', 'avatar', 'instagram_handle', 'tiktok_handle']
+        extra_kwargs = {'avatar': {'required': False, 'allow_null': True}}
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -39,7 +40,17 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(read_only=True)
+    avatar = serializers.SerializerMethodField()
+
+    def get_avatar(self, obj):
+        request = self.context.get('request')
+        profile = getattr(obj, 'profile', None)
+        if not profile:
+            return None
+        if profile.avatar:
+            return request.build_absolute_uri(profile.avatar.url) if request else profile.avatar.url
+        return profile.avatar_url or None
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'profile']
+        fields = ['id', 'username', 'email', 'avatar', 'profile']

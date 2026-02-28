@@ -42,3 +42,15 @@ class Participation(models.Model):
 
     def __str__(self):
         return f"{self.user.username} -> {self.jam_session.title}"
+
+class Message(models.Model):
+    jam_session = models.ForeignKey(JamSession, on_delete=models.CASCADE, related_name='messages')
+    sender = models.ForeignKey(User, on_delete=models.CASCADE)
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.sender.username}: {self.text[:50]}"
