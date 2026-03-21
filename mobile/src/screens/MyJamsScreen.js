@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { View, Text, SectionList, TouchableOpacity, StyleSheet, RefreshControl, Alert } from 'react-native'
+import { useFocusEffect } from '@react-navigation/native'
 import { useAuth } from '../context/AuthContext'
 import client from '../api/client'
 
@@ -59,6 +60,8 @@ export default function MyJamsScreen({ navigation }) {
   }, [])
 
   useEffect(() => { if (user) fetchMyJams() }, [fetchMyJams, user])
+
+  useFocusEffect(useCallback(() => { if (user) fetchMyJams() }, [fetchMyJams, user]))
 
   const handleDelete = (id) => {
     Alert.alert('Delete Session', 'Are you sure you want to delete this jam session?', [

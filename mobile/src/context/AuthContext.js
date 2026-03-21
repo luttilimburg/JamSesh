@@ -1,8 +1,18 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import * as SecureStore from 'expo-secure-store'
+import * as Notifications from 'expo-notifications'
 import client from '../api/client'
 
 const AuthContext = createContext(null)
+
+async function registerPushToken() {
+  try {
+    const { status } = await Notifications.requestPermissionsAsync()
+    if (status !== 'granted') return
+    const token = (await Notifications.getExpoPushTokenAsync()).data
+    await client.post('/users/push-token/', { token })
+  } catch (_) {}
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -12,7 +22,10 @@ export function AuthProvider({ children }) {
     SecureStore.getItemAsync('access').then((token) => {
       if (token) {
         client.get('/users/me/')
-          .then(({ data }) => setUser(data))
+          .then(({ data }) => {
+            setUser(data)
+            registerPushToken()
+          })
           .catch(async () => {
             await SecureStore.deleteItemAsync('access')
             await SecureStore.deleteItemAsync('refresh')
@@ -30,6 +43,7 @@ export function AuthProvider({ children }) {
     await SecureStore.setItemAsync('refresh', data.refresh)
     const me = await client.get('/users/me/')
     setUser(me.data)
+    registerPushToken()
   }
 
   const register = async (username, email, password, password2) => {
@@ -44,6 +58,7 @@ export function AuthProvider({ children }) {
     await SecureStore.setItemAsync('refresh', data.refresh)
     const me = await client.get('/users/me/')
     setUser(me.data)
+    registerPushToken()
   }
 
   const logout = async () => {

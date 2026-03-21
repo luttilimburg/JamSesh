@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "MusiMeet",
+    "slug": "muscimeet",
     "version": "1.0.0",
     "scheme": "muscimeet",
     "orientation": "portrait",
@@ -13,9 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.muscimeet.app"
     },
     "android": {
+      "package": "com.muscimeet.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -28,8 +30,12 @@
     },
     "plugins": [
       "expo-secure-store",
+      "expo-notifications",
       "@react-native-community/datetimepicker",
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "apiUrl": "http://192.168.178.22:8000/api"
+    }
   }
 }

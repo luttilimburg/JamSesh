@@ -1,14 +1,24 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Alert, ActivityIndicator, Linking, Platform,
+  Alert, ActivityIndicator, Linking, Platform, Modal, TextInput,
 } from 'react-native'
+import * as StoreReview from 'expo-store-review'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useAuth } from '../context/AuthContext'
 import client from '../api/client'
 
 const GENRE_ICONS = {
   jazz: '🎷', rock: '🎸', pop: '🎤', hiphop: '🎧', classical: '🎻', other: '🎵',
 }
+
+const REPORT_REASONS = [
+  { value: 'harassment', label: 'Harassment or abuse' },
+  { value: 'no_show', label: 'Repeatedly no-show' },
+  { value: 'fake_profile', label: 'Fake profile' },
+  { value: 'inappropriate', label: 'Inappropriate content' },
+  { value: 'other', label: 'Other' },
+]
 
 function capitalize(s) {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''
@@ -37,10 +47,20 @@ export default function JamDetailScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const [isPast, setIsPast] = useState(false)
+  const [reviewModal, setReviewModal] = useState(null)
+  const [reviewForm, setReviewForm] = useState({ showed_up: null, would_jam_again: null })
+  const [reviewedIds, setReviewedIds] = useState(new Set())
+  const [submittingReview, setSubmittingReview] = useState(false)
+  const [reportModal, setReportModal] = useState(null)
+  const [reportReason, setReportReason] = useState('')
+  const [reportDetails, setReportDetails] = useState('')
+  const [submittingReport, setSubmittingReport] = useState(false)
 
   const isOwner = user?.username === createdBy
-  const isJoined = participants.includes(user?.username)
-  const spotsLeft = jam.max_participants - participants.length
+  const isJoined = participants.some((p) => p.username === user?.username)
+  // Organiser always occupies one spot
+  const spotsLeft = jam.max_participants - participants.length - 1
   const isFull = spotsLeft <= 0
 
   const d = new Date(jam.date_time)
@@ -61,6 +81,7 @@ export default function JamDetailScreen({ route, navigation }) {
   useEffect(() => {
     navigation.setOptions({ title: jam.title })
     fetchParticipants()
+    setIsPast(new Date(jam.date_time) < new Date())
   }, [])
 
   async function handleJoin() {
@@ -72,11 +93,23 @@ export default function JamDetailScreen({ route, navigation }) {
     try {
       await client.post('/join/', { jam_session: jam.id })
       await fetchParticipants()
+      maybeRequestReview()
     } catch (err) {
       Alert.alert('Error', err.response?.data?.detail || 'Could not join session.')
     } finally {
       setActionLoading(false)
     }
+  }
+
+  async function maybeRequestReview() {
+    try {
+      const already = await AsyncStorage.getItem('review_requested')
+      if (already) return
+      const available = await StoreReview.isAvailableAsync()
+      if (!available) return
+      await AsyncStorage.setItem('review_requested', '1')
+      await StoreReview.requestReview()
+    } catch (_) {}
   }
 
   async function handleLeave() {
@@ -118,6 +151,45 @@ export default function JamDetailScreen({ route, navigation }) {
     ])
   }
 
+  async function handleSubmitReview() {
+    setSubmittingReview(true)
+    try {
+      await client.post(`/jams/${jam.id}/review/`, {
+        reviewee: reviewModal.userId,
+        showed_up: reviewForm.showed_up,
+        would_jam_again: reviewForm.would_jam_again,
+      })
+      setReviewedIds((prev) => new Set([...prev, reviewModal.userId]))
+      setReviewModal(null)
+      setReviewForm({ showed_up: null, would_jam_again: null })
+      Alert.alert('Done', 'Review submitted!')
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.detail || 'Could not submit review.')
+    } finally {
+      setSubmittingReview(false)
+    }
+  }
+
+  async function handleSubmitReport() {
+    setSubmittingReport(true)
+    try {
+      await client.post('/report/', {
+        reported_user: reportModal.userId,
+        jam_session: jam.id,
+        reason: reportReason,
+        details: reportDetails,
+      })
+      setReportModal(null)
+      setReportReason('')
+      setReportDetails('')
+      Alert.alert('Reported', 'Your report has been submitted. Our team will review it.')
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.detail || 'Could not submit report.')
+    } finally {
+      setSubmittingReport(false)
+    }
+  }
+
   const totalConfirmed = participants.length + 1 // +1 for organizer
 
   return (
@@ -156,9 +228,23 @@ export default function JamDetailScreen({ route, navigation }) {
           <TouchableOpacity
             style={styles.infoRow}
             onPress={() => {
-              const q = encodeURIComponent(jam.location)
-              const url = Platform.OS === 'ios' ? `maps://0,0?q=${q}` : `geo:0,0?q=${q}`
-              Linking.openURL(url).catch(() => Linking.openURL(`https://maps.google.com/?q=${q}`))
+              const lat = jam.latitude
+              const lng = jam.longitude
+              let url
+              if (lat != null && lng != null) {
+                url = Platform.OS === 'ios'
+                  ? `maps://${lat},${lng}?q=${lat},${lng}`
+                  : `geo:${lat},${lng}?q=${lat},${lng}`
+              } else {
+                const q = encodeURIComponent(jam.location)
+                url = Platform.OS === 'ios' ? `maps://0,0?q=${q}` : `geo:0,0?q=${q}`
+              }
+              Linking.openURL(url).catch(() => {
+                const q = lat != null && lng != null
+                  ? `${lat},${lng}`
+                  : encodeURIComponent(jam.location)
+                Linking.openURL(`https://maps.google.com/?q=${q}`)
+              })
             }}
             activeOpacity={0.7}
           >
@@ -232,11 +318,44 @@ export default function JamDetailScreen({ route, navigation }) {
               </View>
               {/* Participants */}
               {participants.map((p) => (
-                <View key={p} style={styles.playerRow}>
+                <View key={String(p.id)} style={styles.playerRow}>
                   <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{p.charAt(0).toUpperCase()}</Text>
+                    <Text style={styles.avatarText}>{p.username.charAt(0).toUpperCase()}</Text>
                   </View>
-                  <Text style={styles.playerName}>{p}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.playerName}>{p.username}</Text>
+                    {p.jammed_before && (
+                      <View style={jb.badge}>
+                        <Text style={jb.badgeText}>Jammed before</Text>
+                      </View>
+                    )}
+                    {p.trust_stats?.successful_jams > 0 && (
+                      <Text style={styles.trustLine}>
+                        {p.trust_stats.successful_jams} successful jams
+                        {p.trust_stats.would_jam_again_pct !== null
+                          ? ` · ${p.trust_stats.would_jam_again_pct}% would jam again`
+                          : ''}
+                      </Text>
+                    )}
+                  </View>
+                  {user && p.username !== user.username && (
+                    <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                      {isPast && (isOwner || isJoined) && !reviewedIds.has(p.id) && (
+                        <TouchableOpacity
+                          style={rv.reviewBtn}
+                          onPress={() => setReviewModal({ userId: p.id, username: p.username })}
+                        >
+                          <Text style={rv.reviewBtnText}>Review</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        style={rp.reportLink}
+                        onPress={() => setReportModal({ userId: p.id, username: p.username })}
+                      >
+                        <Text style={rp.reportLinkText}>Report</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               ))}
             </>
@@ -258,6 +377,97 @@ export default function JamDetailScreen({ route, navigation }) {
           </View>
         )}
       </ScrollView>
+
+      {/* Review modal */}
+      <Modal visible={!!reviewModal} transparent animationType="slide" onRequestClose={() => setReviewModal(null)}>
+        <View style={rv.overlay}>
+          <View style={rv.sheet}>
+            <Text style={rv.sheetTitle}>Review {reviewModal?.username}</Text>
+
+            <Text style={rv.question}>Did they show up?</Text>
+            <View style={rv.btnRow}>
+              <TouchableOpacity
+                style={[rv.yesno, reviewForm.showed_up === true && rv.selected]}
+                onPress={() => setReviewForm((f) => ({ ...f, showed_up: true }))}
+              >
+                <Text style={rv.yesnoText}>Yes</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[rv.yesno, reviewForm.showed_up === false && rv.selected]}
+                onPress={() => setReviewForm((f) => ({ ...f, showed_up: false }))}
+              >
+                <Text style={rv.yesnoText}>No</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={rv.question}>Would you jam again?</Text>
+            <View style={rv.btnRow}>
+              <TouchableOpacity
+                style={[rv.yesno, reviewForm.would_jam_again === true && rv.selected]}
+                onPress={() => setReviewForm((f) => ({ ...f, would_jam_again: true }))}
+              >
+                <Text style={rv.yesnoText}>Yes</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[rv.yesno, reviewForm.would_jam_again === false && rv.selected]}
+                onPress={() => setReviewForm((f) => ({ ...f, would_jam_again: false }))}
+              >
+                <Text style={rv.yesnoText}>No</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[rv.submitBtn, (reviewForm.showed_up === null || reviewForm.would_jam_again === null) && rv.disabled]}
+              disabled={reviewForm.showed_up === null || reviewForm.would_jam_again === null || submittingReview}
+              onPress={handleSubmitReview}
+            >
+              <Text style={rv.submitText}>{submittingReview ? 'Submitting...' : 'Submit Review'}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => { setReviewModal(null); setReviewForm({ showed_up: null, would_jam_again: null }) }}>
+              <Text style={rv.cancel}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Report modal */}
+      <Modal visible={!!reportModal} transparent animationType="slide" onRequestClose={() => setReportModal(null)}>
+        <View style={rv.overlay}>
+          <View style={rv.sheet}>
+            <Text style={rv.sheetTitle}>Report {reportModal?.username}</Text>
+            <Text style={rp.modalSub}>Select a reason:</Text>
+            {REPORT_REASONS.map((r) => (
+              <TouchableOpacity
+                key={r.value}
+                style={[rp.reasonRow, reportReason === r.value && rp.reasonSelected]}
+                onPress={() => setReportReason(r.value)}
+              >
+                <Text style={rp.reasonText}>{r.label}</Text>
+              </TouchableOpacity>
+            ))}
+            <TextInput
+              style={rp.detailInput}
+              placeholder="Optional: add details..."
+              placeholderTextColor="#BBBBBB"
+              value={reportDetails}
+              onChangeText={setReportDetails}
+              multiline
+              numberOfLines={2}
+            />
+            <TouchableOpacity
+              style={[rv.submitBtn, !reportReason && rv.disabled]}
+              disabled={!reportReason || submittingReport}
+              onPress={handleSubmitReport}
+            >
+              <Text style={rv.submitText}>{submittingReport ? 'Submitting...' : 'Submit Report'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { setReportModal(null); setReportReason(''); setReportDetails('') }}>
+              <Text style={rv.cancel}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Sticky bottom CTA */}
       <View style={styles.ctaBar}>
@@ -427,4 +637,89 @@ const styles = StyleSheet.create({
     borderColor: '#00C896',
   },
   ownerCtaText: { color: '#009E78', fontSize: 16, fontWeight: '700' },
+  trustLine: { color: '#888', fontSize: 12, marginTop: 2 },
+})
+
+const jb = StyleSheet.create({
+  badge: {
+    backgroundColor: '#E6FAF5',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  badgeText: { color: '#009E78', fontSize: 11, fontWeight: '700' },
+})
+
+const rv = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  sheetTitle: { fontSize: 18, fontWeight: '800', color: '#222', marginBottom: 20 },
+  question: { fontSize: 15, fontWeight: '600', color: '#444', marginBottom: 10 },
+  btnRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+  yesno: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: '#DDDDDD',
+    borderRadius: 10,
+    padding: 14,
+    alignItems: 'center',
+  },
+  selected: { borderColor: '#00C896', backgroundColor: '#F0FBF7' },
+  yesnoText: { fontWeight: '700', color: '#222' },
+  submitBtn: {
+    backgroundColor: '#00C896',
+    borderRadius: 10,
+    padding: 14,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  disabled: { backgroundColor: '#CCCCCC' },
+  submitText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  cancel: { textAlign: 'center', color: '#888', fontSize: 14, fontWeight: '600' },
+  reviewBtn: {
+    borderWidth: 1.5,
+    borderColor: '#00C896',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginLeft: 8,
+  },
+  reviewBtnText: { color: '#009E78', fontWeight: '600', fontSize: 13 },
+})
+
+const rp = StyleSheet.create({
+  reportLink: {},
+  reportLinkText: { color: '#BBBBBB', fontSize: 12, fontWeight: '600' },
+  modalSub: { color: '#717171', fontSize: 14, marginBottom: 10 },
+  reasonRow: {
+    borderWidth: 1.5,
+    borderColor: '#EBEBEB',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 8,
+  },
+  reasonSelected: { borderColor: '#00C896', backgroundColor: '#F0FBF7' },
+  reasonText: { color: '#222', fontSize: 14 },
+  detailInput: {
+    borderWidth: 1.5,
+    borderColor: '#EBEBEB',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: '#222',
+    marginBottom: 16,
+    textAlignVertical: 'top',
+  },
 })

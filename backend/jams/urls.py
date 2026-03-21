@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     JamSessionListCreateView, JamSessionRetrieveDestroyView,
     MyJamsView, ParticipationCreateView, MessageListCreateView,
-    ParticipantListView, LeaveJamView,
+    ParticipantListView, LeaveJamView, ReviewCreateView, ReportCreateView,
 )
 
 urlpatterns = [
@@ -12,5 +12,7 @@ urlpatterns = [
     path('jams/<int:jam_pk>/messages/', MessageListCreateView.as_view(), name='jam-messages'),
     path('jams/<int:jam_pk>/participants/', ParticipantListView.as_view(), name='jam-participants'),
     path('jams/<int:jam_pk>/leave/', LeaveJamView.as_view(), name='leave-jam'),
+    path('jams/<int:jam_pk>/review/', ReviewCreateView.as_view(), name='jam-review'),
     path('join/', ParticipationCreateView.as_view(), name='join-jam'),
+    path('report/', ReportCreateView.as_view(), name='report'),
 ]

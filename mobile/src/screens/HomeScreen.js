@@ -1,7 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
-import { View, Text, SectionList, TouchableOpacity, StyleSheet, RefreshControl, Alert } from 'react-native'
+import { View, Text, SectionList, TouchableOpacity, StyleSheet, RefreshControl, Alert, TextInput, ScrollView } from 'react-native'
+import { useFocusEffect } from '@react-navigation/native'
 import { useAuth } from '../context/AuthContext'
 import client from '../api/client'
+
+const GENRES = ['jazz', 'rock', 'pop', 'hiphop', 'classical', 'other']
+const SKILLS = ['beginner', 'intermediate', 'advanced']
 
 function groupByDate(jams) {
   const sorted = [...jams].sort((a, b) => new Date(a.date_time) - new Date(b.date_time))
@@ -63,10 +67,19 @@ export default function HomeScreen({ navigation }) {
   const [jams, setJams] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [search, setSearch] = useState('')
+  const [filterGenre, setFilterGenre] = useState('')
+  const [filterSkill, setFilterSkill] = useState('')
+  const [showPast, setShowPast] = useState(false)
 
-  const fetchJams = useCallback(async () => {
+  const fetchJams = useCallback(async (q, genre, skill, past) => {
     try {
-      const { data } = await client.get('/jams/')
+      const params = {}
+      if (q) params.q = q
+      if (genre) params.genre = genre
+      if (skill) params.skill_level = skill
+      if (past) params.past = '1'
+      const { data } = await client.get('/jams/', { params })
       setJams(data)
     } catch {
       Alert.alert('Error', 'Could not load jam sessions.')
@@ -76,7 +89,22 @@ export default function HomeScreen({ navigation }) {
     }
   }, [])
 
-  useEffect(() => { fetchJams() }, [fetchJams])
+  useEffect(() => {
+    fetchJams(search, filterGenre, filterSkill, showPast)
+  }, [search, filterGenre, filterSkill, showPast, fetchJams])
+
+  useFocusEffect(useCallback(() => {
+    fetchJams(search, filterGenre, filterSkill, showPast)
+  }, [search, filterGenre, filterSkill, showPast, fetchJams]))
+
+  const hasFilters = search || filterGenre || filterSkill || showPast
+
+  function clearFilters() {
+    setSearch('')
+    setFilterGenre('')
+    setFilterSkill('')
+    setShowPast(false)
+  }
 
   return (
     <View style={styles.container}>
@@ -94,6 +122,55 @@ export default function HomeScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.filterWrap}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search jams..."
+          placeholderTextColor="#BBBBBB"
+          value={search}
+          onChangeText={setSearch}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll} contentContainerStyle={styles.chips}>
+          {GENRES.map((g) => (
+            <TouchableOpacity
+              key={g}
+              style={[styles.chip, filterGenre === g && styles.chipActive]}
+              onPress={() => setFilterGenre(filterGenre === g ? '' : g)}
+            >
+              <Text style={[styles.chipText, filterGenre === g && styles.chipTextActive]}>
+                {g.charAt(0).toUpperCase() + g.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          <View style={styles.chipDivider} />
+          {SKILLS.map((s) => (
+            <TouchableOpacity
+              key={s}
+              style={[styles.chip, filterSkill === s && styles.chipActive]}
+              onPress={() => setFilterSkill(filterSkill === s ? '' : s)}
+            >
+              <Text style={[styles.chipText, filterSkill === s && styles.chipTextActive]}>
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          <View style={styles.chipDivider} />
+          <TouchableOpacity
+            style={[styles.chip, showPast && styles.chipPast]}
+            onPress={() => setShowPast((v) => !v)}
+          >
+            <Text style={[styles.chipText, showPast && styles.chipTextActive]}>Past</Text>
+          </TouchableOpacity>
+        </ScrollView>
+        {hasFilters ? (
+          <TouchableOpacity onPress={clearFilters} style={styles.clearBtn}>
+            <Text style={styles.clearBtnText}>Clear filters</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
+
       <SectionList
         sections={groupByDate(jams)}
         keyExtractor={(item) => String(item.id)}
@@ -103,9 +180,13 @@ export default function HomeScreen({ navigation }) {
         )}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchJams() }} tintColor="#aaa" />
+          <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); fetchJams(search, filterGenre, filterSkill, showPast) }} tintColor="#aaa" />
         }
-        ListEmptyComponent={!loading && <Text style={styles.empty}>No jam sessions yet. Be the first!</Text>}
+        ListEmptyComponent={!loading && (
+          <Text style={styles.empty}>
+            {showPast ? 'No past jam sessions found.' : hasFilters ? 'No jams match your filters.' : 'No jam sessions yet. Be the first!'}
+          </Text>
+        )}
         contentContainerStyle={{ paddingBottom: 40 }}
       />
     </View>
@@ -130,6 +211,33 @@ const styles = StyleSheet.create({
   headerDesc: { color: '#888', fontSize: 13, marginTop: 2 },
   newBtn: { backgroundColor: '#00C896', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, marginTop: 6 },
   newBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  filterWrap: { paddingTop: 10, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#EBEBEB', backgroundColor: '#fff' },
+  searchInput: {
+    marginHorizontal: 16,
+    borderWidth: 1.5,
+    borderColor: '#EBEBEB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 15,
+    color: '#222',
+    marginBottom: 8,
+  },
+  chipsScroll: { paddingLeft: 16 },
+  chips: { paddingRight: 16, gap: 6, flexDirection: 'row', alignItems: 'center' },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: '#EBEBEB',
+  },
+  chipActive: { backgroundColor: '#00C896' },
+  chipText: { fontSize: 13, color: '#888', fontWeight: '600' },
+  chipTextActive: { color: '#fff' },
+  chipDivider: { width: 1, height: 20, backgroundColor: '#EBEBEB', marginHorizontal: 4 },
+  chipPast: { backgroundColor: '#717171' },
+  clearBtn: { alignSelf: 'flex-end', marginRight: 16, marginTop: 6 },
+  clearBtnText: { color: '#009E78', fontSize: 13, fontWeight: '600' },
   dateHeader: {
     color: '#717171',
     fontSize: 13,

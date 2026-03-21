@@ -8,6 +8,7 @@ import DateTimePicker from '@react-native-community/datetimepicker'
 import MapView from 'react-native-maps'
 import * as Location from 'expo-location'
 import client from '../api/client'
+import { useAuth } from '../context/AuthContext'
 
 const GENRES = ['jazz', 'rock', 'pop', 'hiphop', 'classical', 'other']
 const SKILLS = ['beginner', 'intermediate', 'advanced']
@@ -34,7 +35,17 @@ function fmtTime(d) {
   return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
+const GATE_LABELS = {
+  avatar: 'Profile photo',
+  instruments: 'Instruments',
+  skill_level: 'Skill level',
+  bio: 'Bio',
+  social_link: 'Instagram or TikTok',
+}
+
 export default function CreateJamScreen({ navigation }) {
+  const { user } = useAuth()
+  // All hooks must come before any conditional return
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [genre, setGenre] = useState('jazz')
@@ -42,6 +53,7 @@ export default function CreateJamScreen({ navigation }) {
   const [location, setLocation] = useState('')
   const [locationQuery, setLocationQuery] = useState('')
   const [locationResults, setLocationResults] = useState([])
+  const [locationCoords, setLocationCoords] = useState(null) // { lat, lng }
   const [maxParticipants, setMaxParticipants] = useState('5')
   const [date, setDate] = useState(defaultDate())
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -52,6 +64,27 @@ export default function CreateJamScreen({ navigation }) {
   const searchTimer = useRef(null)
   const scrollRef = useRef(null)
   const locationY = useRef(0)
+
+  const score = user?.profile?.completeness_score ?? 0
+  if (score < 100) {
+    const missing = user?.profile?.missing_fields ?? []
+    return (
+      <View style={gate.container}>
+        <Text style={gate.icon}>🎸</Text>
+        <Text style={gate.title}>Complete your profile first</Text>
+        <Text style={gate.body}>
+          Your profile must be 100% complete before you can host a jam session.
+          {'\n\n'}Still missing:
+        </Text>
+        {missing.map((f) => (
+          <Text key={f} style={gate.item}>• {GATE_LABELS[f] ?? f}</Text>
+        ))}
+        <TouchableOpacity style={gate.btn} onPress={() => navigation.navigate('Main', { screen: 'Profile' })}>
+          <Text style={gate.btnText}>Go to Profile</Text>
+        </TouchableOpacity>
+      </View>
+    )
+  }
 
   async function searchLocation(query) {
     if (query.length < 3) { setLocationResults([]); return }
@@ -71,6 +104,7 @@ export default function CreateJamScreen({ navigation }) {
   function onLocationChange(text) {
     setLocationQuery(text)
     setLocation('')
+    setLocationCoords(null)
     clearTimeout(searchTimer.current)
     searchTimer.current = setTimeout(() => searchLocation(text), 400)
   }
@@ -78,6 +112,7 @@ export default function CreateJamScreen({ navigation }) {
   function pickLocation(item) {
     setLocation(item.display_name)
     setLocationQuery(item.display_name)
+    setLocationCoords({ lat: parseFloat(item.lat), lng: parseFloat(item.lon) })
     setLocationResults([])
   }
 
@@ -116,6 +151,7 @@ export default function CreateJamScreen({ navigation }) {
       setLocation(fallback)
       setLocationQuery(fallback)
     }
+    setLocationCoords({ lat: mapRegion.latitude, lng: mapRegion.longitude })
     setLocationResults([])
     setShowMap(false)
   }
@@ -164,6 +200,8 @@ export default function CreateJamScreen({ navigation }) {
         genre,
         skill_level: skillLevel,
         location: location.trim(),
+        latitude: locationCoords?.lat ?? null,
+        longitude: locationCoords?.lng ?? null,
         date_time: date.toISOString(),
         max_participants: parseInt(maxParticipants),
       })
@@ -453,5 +491,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 28,
   },
+  btnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+})
+
+const gate = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#fff', padding: 32, justifyContent: 'center', alignItems: 'center' },
+  icon: { fontSize: 48, marginBottom: 16 },
+  title: { fontSize: 22, fontWeight: '800', color: '#222', marginBottom: 12, textAlign: 'center' },
+  body: { fontSize: 15, color: '#717171', textAlign: 'center', lineHeight: 22, marginBottom: 16 },
+  item: { fontSize: 15, color: '#222', alignSelf: 'flex-start', marginBottom: 4 },
+  btn: { backgroundColor: '#00C896', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 28, width: '100%' },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 })

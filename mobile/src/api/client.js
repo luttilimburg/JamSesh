@@ -1,9 +1,11 @@
 import axios from 'axios'
 import * as SecureStore from 'expo-secure-store'
+import Constants from 'expo-constants'
 
-// Use your computer's local IP when testing on a physical device
-// Use 10.0.2.2 for Android emulator, localhost for iOS simulator
-export const API_URL = 'http://192.168.178.22:8000/api'
+// API URL is set in app.json > extra.apiUrl
+// Change that value to point to your production server before building.
+export const API_URL =
+  Constants.expoConfig?.extra?.apiUrl ?? 'http://192.168.178.22:8000/api'
 
 const client = axios.create({ baseURL: API_URL })
 

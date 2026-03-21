@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import JamSession, Participation, Message
+from .models import JamSession, Participation, Message, Review, Report
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -35,3 +35,19 @@ class ParticipationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Participation
         fields = '__all__'
+
+
+class ReviewSerializer(serializers.ModelSerializer):
+    reviewer = serializers.ReadOnlyField(source='reviewer.username')
+
+    class Meta:
+        model = Review
+        fields = ['id', 'reviewer', 'reviewee', 'jam_session', 'showed_up', 'would_jam_again', 'created_at']
+        read_only_fields = ['reviewer', 'created_at']
+
+
+class ReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Report
+        fields = ['id', 'reported_user', 'jam_session', 'reason', 'details', 'created_at']
+        read_only_fields = ['created_at']

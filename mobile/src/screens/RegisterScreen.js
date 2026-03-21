@@ -19,6 +19,7 @@ export default function RegisterScreen({ navigation }) {
     setLoading(true)
     try {
       await register(form.username, form.email, form.password, form.password2)
+      navigation.reset({ index: 0, routes: [{ name: 'Onboarding' }] })
     } catch (err) {
       const data = err.response?.data
       if (data) {
