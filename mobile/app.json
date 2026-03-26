@@ -35,7 +35,7 @@
       "expo-web-browser"
     ],
     "extra": {
-      "apiUrl": "http://192.168.178.22:8000/api"
+      "apiUrl": "https://muscimeet-backend.onrender.com/api"
     }
   }
 }
