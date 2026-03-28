@@ -132,13 +132,9 @@ STORAGES = {
     'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
 }
 
-_cloudinary_name = os.getenv('CLOUDINARY_CLOUD_NAME', '')
-if _cloudinary_name:
-    CLOUDINARY_STORAGE = {
-        'CLOUD_NAME': _cloudinary_name,
-        'API_KEY': os.getenv('CLOUDINARY_API_KEY', ''),
-        'API_SECRET': os.getenv('CLOUDINARY_API_SECRET', ''),
-    }
+_cloudinary_url = os.getenv('CLOUDINARY_URL', '')
+if _cloudinary_url:
+    # django-cloudinary-storage picks up CLOUDINARY_URL automatically
     STORAGES['default'] = {'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage'}
     MEDIA_URL = '/media/'
 else:
