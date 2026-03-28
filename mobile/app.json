@@ -18,6 +18,7 @@
     },
     "android": {
       "package": "com.muscimeet.app",
+      "minSdkVersion": 24,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -35,7 +36,10 @@
       "expo-web-browser"
     ],
     "extra": {
-      "apiUrl": "https://jamsesh-0zu5.onrender.com/api"
+      "apiUrl": "https://jamsesh-0zu5.onrender.com/api",
+      "eas": {
+        "projectId": "818e6d32-40cb-46e0-94c0-4d9250e49e11"
+      }
     }
   }
 }
